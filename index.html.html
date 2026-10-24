@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>健康島 3D</title>
+<style>
+:root{--ink:#5A4632;--cream:#FFFAEC;--wood:#C48F52;--leaf:#5FBF7F;--or:#FF9248;--pink:#FF8FA3}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:linear-gradient(#9BE0E8,#7CCBDA);font-family:"jf-openhuninn","Zen Maru Gothic","Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;font-weight:700;color:var(--ink);overflow:hidden;display:flex;flex-direction:column}
+.title{position:absolute;left:14px;top:14px;background:var(--cream);border:3px solid var(--wood);border-radius:22px;padding:8px 18px 8px 14px;z-index:3;display:flex;gap:10px;align-items:center;box-shadow:0 4px 0 rgba(120,80,30,.25)}
+.title em{font-style:normal;font-size:30px}
+.title b{display:block;font-size:26px;line-height:1.05;color:var(--leaf);letter-spacing:.06em}
+.title span{font-size:12px;letter-spacing:.1em;color:#9A7B58}
+#score{position:absolute;right:14px;top:14px;background:var(--cream);border:3px solid var(--wood);border-radius:999px;padding:8px 18px;font-size:15px;z-index:3;box-shadow:0 4px 0 rgba(120,80,30,.25)}
+#panel{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);width:min(580px,calc(100% - 24px));background:var(--cream);border:4px solid var(--wood);border-radius:28px;padding:22px 22px 16px;box-shadow:0 6px 0 rgba(120,80,30,.3);z-index:4}
+#panel::before{content:"";position:absolute;inset:5px;border:2px dashed #E7CBA0;border-radius:22px;pointer-events:none}
+#panel.hide{display:none}
+#panel h2{margin:-38px 0 10px;display:inline-block;background:var(--leaf);color:#fff;border:3px solid #fff;border-radius:999px;padding:5px 16px;font-size:17px;box-shadow:0 3px 0 rgba(0,0,0,.15)}
+#panel h2 i{font-style:normal;margin-right:6px}
+#panel p{white-space:pre-line;margin:0 0 12px;line-height:1.75;font-size:15px;font-weight:500}
+.q{margin-bottom:8px;color:#C9682A}
+.opts{display:flex;gap:8px;flex-wrap:wrap}
+.opts button{font:inherit;font-size:14px;border:3px solid var(--wood);background:#fff;color:var(--ink);border-radius:999px;padding:7px 16px;cursor:pointer;box-shadow:0 3px 0 rgba(120,80,30,.25)}
+.opts button:hover,.opts button:focus-visible{background:#FFF1CC;outline:none}
+.opts button.ok{background:#BDEBA9;border-color:#5FBF7F}
+.opts button.no{background:#FFD3C2;border-color:var(--or)}
+#fb{margin-top:10px;font-size:14px;min-height:1.2em;font-weight:500}
+#x{position:absolute;right:14px;top:10px;border:0;background:none;font-size:24px;cursor:pointer;color:var(--ink);z-index:1}
+@media (max-width:600px){.title b{font-size:20px}#score{top:76px;right:auto;left:14px}}
+
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#cv.drag{cursor:grabbing}
+#labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.pill{position:absolute;transform:translate(-50%,-50%);background:var(--cream);border:3px solid var(--wood);border-radius:999px;padding:4px 13px 4px 10px;font-size:15px;white-space:nowrap;cursor:pointer;pointer-events:auto;box-shadow:0 3px 0 rgba(120,80,30,.3);transition:background .15s,color .15s;user-select:none}
+.pill:hover,.pill.on{background:var(--or);border-color:#fff;color:#fff}
+.pill.done{border-color:var(--leaf)}
+.pill b{margin-right:5px;font-weight:400}
+#hint{position:absolute;left:50%;top:78px;transform:translateX(-50%);background:rgba(255,250,236,.85);border-radius:999px;padding:5px 14px;font-size:12px;z-index:2;pointer-events:none}
+#joy{display:none;position:absolute;left:20px;bottom:24px;width:110px;height:110px;border-radius:50%;background:rgba(255,250,236,.55);border:3px solid var(--wood);z-index:5;touch-action:none}
+#knob{position:absolute;left:30px;top:30px;width:44px;height:44px;border-radius:50%;background:var(--or);border:3px solid #fff;pointer-events:none}
+#err{display:none;position:absolute;inset:0;align-items:center;justify-content:center;text-align:center;padding:30px;z-index:9}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="labels"></div>
+<div class="title"><em>🌱</em><div><b>健康島</b><span>五大特質與分級醫療</span></div></div>
+<div id="score">🍎 已通關 0 / 6</div>
+<div id="hint">方向鍵或 W A S D 讓貓貓走路 · 走上小島就能答題 · 拖曳旋轉 · 滾輪縮放</div>
+<div id="joy"><div id="knob"></div></div>
+<div id="err">這台裝置無法顯示 3D 畫面,請改用最新版 Chrome 並確認已連上網路。</div>
+<div id="panel" class="hide" role="dialog" aria-live="polite"><button id="x" aria-label="關閉">×</button><h2 id="pt"></h2><p id="pp"></p><div class="q" id="pq"></div><div class="opts" id="po"></div><div id="fb"></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const D=[
+{id:0,n:"健保總站",x:500,y:300,c:"#E0793F",t:"歡迎來到健康島!",
+ p:"全民健保有五大特質,分別住在五座小島上:全民納保、健保卡與雲端藥歷、費用申報、自由就醫、部分負擔,另外還有一座分級醫療島。帶著小人一座一座拜訪,答對題目就算通關。"},
+{id:1,n:"全民納保",x:500,y:95,c:"#4A86B8",t:"特質一:全民納保",
+ p:"所有國民都必須參加健保,這叫「強制納保」。大家一起繳保費、互相幫忙,健康的人幫助生病的人,這就是社會互助的精神。",
+ q:"為什麼健保要規定每個人都要加入?",o:["因為只有健康的人需要保險","讓風險由全民分擔,發揮社會互助"],a:1,e:"人人加入,保費才夠大家共用,也沒有人會因為沒保險而看不起病。"},
+{id:2,n:"健保卡與雲端藥歷",x:800,y:210,c:"#5E9C76",t:"特質二:手握健保卡,病歷資料容易找",
+ p:"看病時刷健保卡,醫師能查到你的就醫與用藥紀錄(雲端藥歷),不用每次重新說明,也能避免重複用藥與重複檢查,減少浪費。",
+ q:"雲端藥歷最大的好處是?",o:["避免重複用藥與檢查浪費","讓同一種藥可以多領幾份"],a:0,e:"醫師看得到你最近的用藥與檢查,就不會重複開,更安全也更省。"},
+{id:3,n:"費用申報",x:800,y:420,c:"#C9A227",t:"特質三:費用申報,支付實際費用",
+ p:"醫療院所看診後,向健保署申報費用,由健保支付實際的醫療費用。給付範圍很廣,包含門診、住院、中醫、西醫、牙醫等,防範「因病致貧」。",
+ q:"健保的給付範圍包含哪些?",o:["只有西醫門診","門診、住院、中西醫、牙醫等"],a:1,e:"範圍廣,生大病時不至於因為醫藥費而陷入困境,這就是防範因病致貧。"},
+{id:4,n:"自由就醫",x:500,y:525,c:"#8A6BB5",t:"特質四:自由就醫,特約院所達 99%",
+ p:"健保特約的醫療院所高達九成九,你可以自由選擇醫院或診所,就醫很方便。自由也要負責:小病先看基層診所,需要時再轉診。",
+ q:"自由就醫代表什麼?",o:["可以依需求選擇特約院所","任何小病都該直接去大醫院"],a:0,e:"選擇很多是好事,但要依病情選對地方,大醫院才有空照顧重症病人。"},
+{id:5,n:"部分負擔",x:200,y:420,c:"#D2493F",t:"特質五:部分負擔,承擔合理保險費",
+ p:"看病時要自己付一小部分費用,再加上平常繳的保費,健保才能長久運作。部分負擔也提醒大家珍惜醫療資源,不要隨便浪費。",
+ q:"部分負擔的目的是?",o:["讓大家珍惜醫療資源、健保永續","為了讓醫院多賺錢"],a:0,e:"每個人合理負擔一些,健保才撐得久,也能讓真正需要的人有資源可用。"},
+{id:6,n:"分級醫療",x:200,y:210,c:"#3E9C9C",t:"分級醫療:小病到診所,大病到醫院",
+ p:"醫療院所分成四個層級:\n基層診所(第一站)→ 地區醫院 → 區域醫院 → 醫學中心(急重症)\n核心觀念是「小病到診所、大病到醫院」,讓每個層級各司其職。經診所醫師開立轉診單再到大醫院,看診還能享有部分負擔減免。",
+ q:"先到診所,再由醫師開轉診單去大醫院,有什麼好處?",o:["部分負擔可以減免,流程也更順","一定可以比較快拿到藥"],a:0,e:"轉診能減少部分負擔,病歷也會一起送過去,不必重複檢查,醫學中心也能把資源留給急重症。"}
+];
+const IC=["⭐","🤝","💳","🧾","🧭","🪙","🏥"];
+const RING={1:[0,-4.6],2:[3.98,-2.3],3:[3.98,2.3],4:[0,4.6],5:[-3.98,2.3],6:[-3.98,-2.3]};
+const done=new Set(),total=D.length-1;let shownId=-1;const keys={},joy={x:0,y:0};
+const panel=document.getElementById("panel"),pt=document.getElementById("pt"),pp=document.getElementById("pp"),pq=document.getElementById("pq"),po=document.getElementById("po"),fb=document.getElementById("fb");
+const labels=document.getElementById("labels");
+const pills={};
+if(!window.THREE||!document.createElement("canvas").getContext("webgl")){document.getElementById("err").style.display="flex"}else{
+const cv=document.getElementById("cv");
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setClearColor(0x8ad4e2,1);
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+const scene=new THREE.Scene();scene.fog=new THREE.Fog(0x8ad4e2,26,58);
+const camera=new THREE.PerspectiveCamera(38,1,.1,120);
+scene.add(new THREE.HemisphereLight(0xffffff,0x9fd6e0,.9));
+const sun=new THREE.DirectionalLight(0xfff1dc,.8);sun.position.set(7,13,6);sun.castShadow=true;
+sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-11,right:11,top:11,bottom:-11,near:1,far:40});sun.shadow.camera.updateProjectionMatrix();sun.shadow.bias=-.0006;scene.add(sun);
+const C=c=>new THREE.MeshLambertMaterial({color:c});
+const mk=(geo,col,x,y,z,par,sh)=>{const m=new THREE.Mesh(geo,col&&col.isMaterial?col:C(col));m.position.set(x,y,z);if(par)par.add(m);m.castShadow=sh!==false;m.receiveShadow=true;return m};
+// water
+const wg=new THREE.PlaneGeometry(90,90,48,48);wg.rotateX(-Math.PI/2);
+const water=mk(wg,0x86d3e2,0,-.35,0,scene,false);
+const wbase=Array.from(wg.attributes.position.array);
+// clouds
+const clouds=[];
+[[-9,7,-6],[8,8,-9],[11,7,3],[-10,8,8],[2,9,-12]].forEach(([x,y,z])=>{const g=new THREE.Group();g.position.set(x,y,z);
+ [[0,0,0,1.2],[1.2,-.2,.2,1],[-1.1,-.2,0,.9],[.2,.3,-.4,.9]].forEach(a=>mk(new THREE.SphereGeometry(a[3],16,12),new THREE.MeshLambertMaterial({color:0xffffff,transparent:true,opacity:.92}),a[0],a[1],a[2],g,false));
+ scene.add(g);clouds.push(g)});
+// islands
+const R=1.8,R0=2.0,islG={},foams=[],trees=[];
+D.forEach(d=>{
+ const p=d.id?RING[d.id]:[0,0];d.wx=p[0];d.wz=p[1];d.r=d.id?R:R0;
+ const dir=new THREE.Vector3(-d.wx,0,-d.wz);if(dir.length()<.01)dir.set(0,0,1);dir.normalize();d.dir=dir;
+ d.stand=new THREE.Vector3(d.wx+dir.x*1.1,.08,d.wz+dir.z*1.1);
+ const g=new THREE.Group();g.position.set(d.wx,0,d.wz);g.userData.id=d.id;scene.add(g);islG[d.id]=g;const r=d.r;
+ mk(new THREE.CylinderGeometry(r,r,.5,48),0xf8e8be,0,-.25,0,g);
+ mk(new THREE.CylinderGeometry(r*.95,r*.6,1.1,40),0xd9a864,0,-.8,0,g);
+ mk(new THREE.CylinderGeometry(r-.3,r-.3,.1,48),0xa9dd8b,0,.03,0,g);
+ mk(new THREE.CylinderGeometry(r-.9,r-.9,.1,40),0xbfe9a2,0,.05,0,g);
+ const a0=Math.atan2(dir.z,dir.x);
+ const ta=d.id?[[a0+Math.PI-.55,1.3],[a0+Math.PI+.55,1.35],[a0+1.95,1.25],[a0-1.95,1.25]]:[[0,1.45],[2.09,1.45],[3.14,1.45],[5.24,1.45]];
+ ta.forEach((t,i)=>{const x=Math.cos(t[0])*t[1],z=Math.sin(t[0])*t[1];const tg=new THREE.Group();tg.position.set(x,.08,z);g.add(tg);
+  mk(new THREE.CylinderGeometry(.07,.1,.45,8),0xa5743f,0,.22,0,tg);
+  const cr=mk(new THREE.SphereGeometry(.4,16,12),[0x6cc28a,0x7acd8e,0x8ad39a,0x6cc28a][i],0,.72,0,tg);
+  if(i===1)[[.2,.7,.25],[-.25,.85,.1],[.05,.55,.36]].forEach(f=>mk(new THREE.SphereGeometry(.07,8,8),0xff6b6b,f[0],f[1],f[2],tg,false));
+  trees.push(tg)});
+ for(let i=0;i<6;i++){const t=a0+.6+i*1.0,rr=.9+((i*37)%5)*.12;const x=Math.cos(t)*rr,z=Math.sin(t)*rr;if(Math.abs(Math.atan2(Math.sin(t-a0),Math.cos(t-a0)))<.5)continue;
+  mk(new THREE.SphereGeometry(.07,8,8),i%2?0xff8fa3:0xffffff,x,.14,z,g,false)}
+ const ch=new THREE.Group();ch.position.set(d.id?-dir.x*.35:0,.08,d.id?-dir.z*.35:-.2);ch.rotation.y=Math.atan2(dir.x,dir.z);g.add(ch);
+ mk(new THREE.BoxGeometry(1.1,.75,.9),0xfff6dc,0,.375,0,ch);
+ mk(new THREE.ConeGeometry(.92,.65,8),d.c,0,1.07,0,ch).rotation.y=Math.PI/8;
+ mk(new THREE.BoxGeometry(.22,.38,.05),0xa5743f,0,.19,.46,ch);
+ [-.33,.33].forEach(x=>mk(new THREE.BoxGeometry(.22,.22,.05),0xbfe6f5,x,.46,.46,ch,false));
+ mk(new THREE.BoxGeometry(.16,.3,.16),0xd9a864,.3,1.2,-.1,ch);
+ // foam
+ const f=new THREE.Mesh(new THREE.RingGeometry(r-.02,r+.5,56),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.5,side:THREE.DoubleSide}));
+ f.rotation.x=-Math.PI/2;f.position.set(d.wx,-.33,d.wz);scene.add(f);foams.push(f);
+ // label
+ const el=document.createElement("div");el.className="pill";el.innerHTML=`<b>${IC[d.id]}</b>${d.n}`;el.onclick=()=>go(d);labels.appendChild(el);pills[d.id]=el;
+});
+// bridges
+D.slice(1).forEach(d=>{const dir=new THREE.Vector3(d.wx,0,d.wz).normalize(),L=1.4,mid=2.4;
+ const b=new THREE.Group();b.position.set(dir.x*mid,0,dir.z*mid);b.rotation.y=Math.atan2(dir.x,dir.z);scene.add(b);
+ mk(new THREE.BoxGeometry(.7,.12,L),0xe3b879,0,-.02,0,b);
+ for(let i=0;i<6;i++)mk(new THREE.BoxGeometry(.72,.02,.07),0xb98650,0,.05,-L/2+.14+i*(L-.28)/5,b,false);
+ [-.37,.37].forEach(x=>mk(new THREE.BoxGeometry(.06,.2,L),0xa9773e,x,.1,0,b))});
+// cat
+function makeCat(){
+ const g=new THREE.Group(),inner=new THREE.Group();g.add(inner);
+ const W=0xfffaf0,O=0xee9a45,B=0x3b312c,P=0xff9db0,K=0x2a1f1a;
+ const S=(r,c,x,y,z,sx=1,sy=1,sz=1,par=inner)=>{const m=mk(new THREE.SphereGeometry(r,20,16),c,x,y,z,par);m.scale.set(sx,sy,sz);return m};
+ S(.42,W,0,.42,0,1,.85,1.15);
+ S(.24,O,.38,.52,-.08,.4,1,1.1);S(.22,B,-.38,.5,.12,.4,1,1);S(.26,B,.02,.76,-.14,1,.4,1.2);S(.14,O,-.2,.74,.18,1,.4,1);
+ S(.46,W,0,1.05,.05,1.1,.95,1);
+ S(.3,O,-.24,1.34,.04,1,.6,1.05);S(.26,B,.27,1.32,.05,1,.6,1);
+ [-1,1].forEach(s=>{const e=mk(new THREE.ConeGeometry(.17,.34,4),s<0?O:B,s*.29,1.44,.02,inner);e.rotation.z=-s*.3;e.rotation.y=Math.PI/4;
+  const ei=mk(new THREE.ConeGeometry(.1,.22,4),P,s*.28,1.42,.09,inner,false);ei.rotation.z=-s*.3;ei.rotation.y=Math.PI/4;
+  S(.065,K,s*.19,1.1,.42,1,1.15,.7);S(.02,0xffffff,s*.17,1.14,.46,1,1,1);
+  S(.075,P,s*.31,.96,.38,1.3,.7,.5);S(.13,W,s*.2,.1,.3,1,.7,1.3);S(.13,W,s*.22,.1,-.15,1,.7,1.2);
+  [-.12,.12].forEach((o,j)=>{const w=mk(new THREE.CylinderGeometry(.008,.008,.38,4),0xdddddd,s*.5,.98+o,.38,inner,false);w.rotation.z=Math.PI/2;w.rotation.y=s*(.25+j*.1)})});
+ S(.2,W,0,.93,.4,1.15,.8,.9);S(.05,P,0,1.0,.57,1.2,.8,.8);
+ const tg=new THREE.Group();inner.add(tg);
+ const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,.35,-.4),new THREE.Vector3(0,.4,-.75),new THREE.Vector3(0,.8,-.9),new THREE.Vector3(0,1.15,-.7)]);
+ mk(new THREE.TubeGeometry(curve,20,.07,8),O,0,0,0,tg);S(.09,B,0,1.15,-.7,1,1,1,tg);
+ g.scale.setScalar(.78);g.userData={inner,tg};return g}
+const cat=makeCat();scene.add(cat);cat.position.copy(D[0].stand);
+let path=[],seg=0,here=0,facing=0;
+function walkTo(d){
+ const pts=[cat.position.clone()];
+ if(here!==d.id&&here!==0&&d.id!==0)pts.push(D[0].stand.clone());
+ if(here!==d.id||cat.position.distanceTo(d.stand)>.3)pts.push(d.stand.clone());
+ path=pts;seg=0}
+const walkable=(x,z)=>{for(const d of D)if(Math.hypot(x-d.wx,z-d.wz)<d.r-.2)return true;
+ for(const d of D.slice(1)){const L=Math.hypot(d.wx,d.wz),ux=d.wx/L,uz=d.wz/L,s=x*ux+z*uz,p=-x*uz+z*ux;if(s>1.6&&s<3.0&&Math.abs(p)<.32)return true}return false};
+let lastIsl=-2;
+addEventListener("keydown",e=>{const k=e.key.toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(k)){keys[k]=1;if(k.startsWith("arrow"))e.preventDefault();lastI=performance.now()}});
+addEventListener("keyup",e=>{delete keys[e.key.toLowerCase()]});
+addEventListener("blur",()=>{for(const k in keys)delete keys[k]});
+// camera control
+let az=.35,pol=.95,zoom=1,lastI=-1e5,amp=1,drag=null;const ptrs=new Map();let pd=0,moved=0;
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
+addEventListener("resize",resize);resize();
+cv.addEventListener("pointerdown",e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,[e.clientX,e.clientY]);moved=0;lastI=performance.now();cv.classList.add("drag");
+ if(ptrs.size===2){const a=[...ptrs.values()];pd=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1])}});
+cv.addEventListener("pointermove",e=>{if(!ptrs.has(e.pointerId))return;const o=ptrs.get(e.pointerId);const dx=e.clientX-o[0],dy=e.clientY-o[1];ptrs.set(e.pointerId,[e.clientX,e.clientY]);moved+=Math.abs(dx)+Math.abs(dy);lastI=performance.now();
+ if(ptrs.size===1){az-=dx*.006;pol=Math.max(.45,Math.min(1.3,pol-dy*.004))}
+ else if(ptrs.size===2){const a=[...ptrs.values()],n=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1]);zoom=Math.max(.6,Math.min(1.4,zoom*pd/n));pd=n}});
+const ray=new THREE.Raycaster(),mv=new THREE.Vector2();
+cv.addEventListener("pointerup",e=>{ptrs.delete(e.pointerId);cv.classList.remove("drag");
+ if(moved<6){mv.set(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1);ray.setFromCamera(mv,camera);
+  const hit=ray.intersectObjects(Object.values(islG),true)[0];if(hit){let o=hit.object;while(o&&o.userData.id===undefined)o=o.parent;if(o)go(D[o.userData.id])}}});
+cv.addEventListener("pointercancel",e=>{ptrs.delete(e.pointerId);cv.classList.remove("drag")});
+cv.addEventListener("wheel",e=>{e.preventDefault();zoom=Math.max(.6,Math.min(1.4,zoom*(1+e.deltaY*.001)));lastI=performance.now()},{passive:false});
+const reduce=matchMedia("(prefers-reduced-motion:reduce)").matches;
+const clock=new THREE.Clock();let on=-1;const v3=new THREE.Vector3();
+function frame(){
+ const dt=Math.min(clock.getDelta(),.05),t=clock.elapsedTime,now=performance.now();
+ amp+=((now-lastI>5000&&!reduce?1:0)-amp)*.03;
+ const a=az+Math.sin(t*.25)*.12*amp,asp=innerWidth/innerHeight,rad=17*zoom*Math.max(1,1.6/asp);
+ camera.position.set(Math.sin(pol)*Math.sin(a)*rad,Math.cos(pol)*rad,Math.sin(pol)*Math.cos(a)*rad);camera.lookAt(0,.4,0);
+ // water waves
+ const pa=wg.attributes.position;for(let i=0;i<pa.count;i++){const x=wbase[i*3],z=wbase[i*3+2];pa.setY(i,Math.sin(x*.5+t*1.2)*.07+Math.cos(z*.45+t)*.07)}pa.needsUpdate=true;
+ foams.forEach((f,i)=>{const s=1+Math.sin(t*1.3+i)*.03;f.scale.set(s,s,s);f.material.opacity=.42+Math.sin(t*1.3+i)*.12});
+ clouds.forEach((c,i)=>{c.position.x+=Math.sin(t*.1+i)*.003});
+ trees.forEach((tg,i)=>{tg.rotation.z=Math.sin(t*1.5+i)*.03});
+ Object.keys(islG).forEach(k=>{const g=islG[k],tgt=(+k===on?.18:0)+Math.sin(t*1.1+ +k)*.04;g.position.y+=(tgt-g.position.y)*.1});
+ // cat
+ const ud=cat.userData;let moving=false;
+ let kx=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0)+joy.x,kz=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0)-joy.y;
+ const kl=Math.hypot(kx,kz);
+ if(kl>.12){path=[];if(kl>1){kx/=kl;kz/=kl}
+  const fx=-Math.sin(a),fz=-Math.cos(a),rx=Math.cos(a),rz=-Math.sin(a);
+  const mx=(fx*kz+rx*kx)*3.4*dt,mz=(fz*kz+rz*kx)*3.4*dt,px=cat.position.x,pz=cat.position.z;
+  let nx=px,nz=pz;
+  if(walkable(px+mx,pz+mz)){nx=px+mx;nz=pz+mz}else if(walkable(px+mx,pz)){nx=px+mx}else if(walkable(px,pz+mz)){nz=pz+mz}
+  if(nx!==px||nz!==pz){cat.position.x=nx;cat.position.z=nz;moving=true;const ty=Math.atan2(mx,mz);let df=ty-facing;df=Math.atan2(Math.sin(df),Math.cos(df));facing+=df*.25;cat.rotation.y=facing}}
+ else if(path.length>seg+1){const B=path[seg+1];v3.copy(B).sub(cat.position).setY(0);const step=3.4*dt;
+  if(v3.length()<=step){cat.position.x=B.x;cat.position.z=B.z;seg++;if(path.length<=seg+1)path=[]}
+  else{v3.normalize();cat.position.x+=v3.x*step;cat.position.z+=v3.z*step;const ty=Math.atan2(v3.x,v3.z);let df=ty-facing;df=Math.atan2(Math.sin(df),Math.cos(df));facing+=df*.2;cat.rotation.y=facing;moving=true}}
+ if(moving){cat.position.y=.08+Math.abs(Math.sin(t*13))*.22;ud.inner.rotation.z=Math.sin(t*13)*.07;ud.tg.rotation.y=Math.sin(t*14)*.4}
+ else{cat.position.y=.08+Math.max(0,Math.sin(t*2))*.03;ud.inner.rotation.z=0;ud.tg.rotation.y=Math.sin(t*2.2)*.25;ud.inner.scale.y=1+Math.sin(t*2)*.015;
+  const ty=Math.atan2(camera.position.x-cat.position.x,camera.position.z-cat.position.z);let df=ty-facing;df=Math.atan2(Math.sin(df),Math.cos(df));facing+=df*.04;cat.rotation.y=facing}
+ // which island is the cat on
+ let det=-1;for(const d of D)if(Math.hypot(cat.position.x-d.wx,cat.position.z-d.wz)<d.r-.15){det=d.id;break}
+ if(det>=0)here=det;
+ if(path.length){lastIsl=-2}else if(det!==lastIsl){lastIsl=det;if(det>=0){if(shownId!==det)openIsl(D[det])}else if(shownId>=0)closePanel()}
+ // labels
+ const W=innerWidth,H=innerHeight;
+ D.forEach(d=>{v3.set(d.wx,2.35+islG[d.id].position.y,d.wz).project(camera);const e=pills[d.id];e.style.left=(v3.x*.5+.5)*W+"px";e.style.top=(-v3.y*.5+.5)*H+"px";e.style.zIndex=Math.round((1-v3.z)*1000)});
+ renderer.render(scene,camera);requestAnimationFrame(frame)}
+frame();
+window.__setOn=i=>{on=i};window.__walk=walkTo;
+}
+function openIsl(d){
+ shownId=d.id;Object.values(pills).forEach(p=>p.classList.remove("on"));pills[d.id].classList.add("on");
+ if(window.__setOn)window.__setOn(d.id);
+ pt.innerHTML=`<i>${IC[d.id]}</i>${d.t}`;pp.textContent=d.p;pq.textContent=d.q||"";po.innerHTML="";fb.textContent="";
+ (d.o||[]).forEach((txt,i)=>{const b=document.createElement("button");b.textContent=txt;b.onclick=()=>{
+  [...po.children].forEach(x=>x.classList.remove("ok","no"));
+  if(i===d.a){b.classList.add("ok");fb.textContent="答對了!"+d.e;done.add(d.id);pills[d.id].classList.add("done");document.getElementById("score").textContent=`🍎 已通關 ${done.size} / ${total}`;if(done.size===total)fb.textContent+=" 🎉 你已走遍健康島,成為聰明的健保使用者!"}
+  else{b.classList.add("no");fb.textContent="再想想看。"}};po.appendChild(b)});
+ panel.classList.remove("hide");
+}
+function closePanel(){panel.classList.add("hide");shownId=-1;Object.values(pills).forEach(p=>p.classList.remove("on"));if(window.__setOn)window.__setOn(-1)}
+window.go=function(d){if(window.__walk)window.__walk(d);openIsl(d)};
+document.getElementById("x").onclick=closePanel;
+// on-screen joystick (touch)
+const joyEl=document.getElementById("joy"),knob=document.getElementById("knob");
+if("ontouchstart" in window||navigator.maxTouchPoints>0)joyEl.style.display="block";
+let jp=null;
+const jmove=e=>{const r=joyEl.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),m=Math.min(1,Math.hypot(dx,dy)/45),an=Math.atan2(dy,dx);
+ joy.x=Math.cos(an)*m;joy.y=Math.sin(an)*m;knob.style.transform=`translate(${Math.cos(an)*m*38}px,${Math.sin(an)*m*38}px)`};
+joyEl.addEventListener("pointerdown",e=>{jp=e.pointerId;joyEl.setPointerCapture(jp);jmove(e)});
+joyEl.addEventListener("pointermove",e=>{if(e.pointerId===jp)jmove(e)});
+const jend=e=>{if(e.pointerId===jp){jp=null;joy.x=joy.y=0;knob.style.transform=""}};
+joyEl.addEventListener("pointerup",jend);joyEl.addEventListener("pointercancel",jend);
+</script>
+</body>
+</html>
